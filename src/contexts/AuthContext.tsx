@@ -44,13 +44,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state change:', event, session?.user?.email)
         setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
         
-        // You can add additional logic here based on auth events
-        if (event === 'SIGNED_IN') {
-          console.log('User signed in:', session?.user?.email)
+        // When user signs in, ensure they're in the profiles table
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('User signed in:', session.user.email)
+          
+          // Try to sync the user to profiles table
+          try {
+            const { error: syncError } = await supabase.rpc('sync_auth_users_to_profiles')
+            if (syncError) {
+              console.warn('Sync function error:', syncError)
+            } else {
+              console.log('User sync completed')
+            }
+          } catch (err) {
+            console.warn('Sync function not available, user should be synced by trigger')
+          }
+          
+          // Check if user exists in profiles
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+            
+          if (profileError && profileError.code === 'PGRST116') {
+            console.log('Profile not found, attempting manual insert...')
+            // Profile doesn't exist, try to create it manually
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: session.user.id,
+                email: session.user.email,
+                full_name: session.user.user_metadata?.full_name || 
+                          session.user.user_metadata?.name || 
+                          session.user.email?.split('@')[0]
+              })
+              
+            if (insertError) {
+              console.error('Failed to create profile:', insertError)
+            } else {
+              console.log('Profile created manually')
+            }
+          } else if (profile) {
+            console.log('Profile found:', profile)
+          }
+          
+          // Check admin status
+          const { data: adminCheck } = await supabase.rpc('is_admin')
+          console.log('Is admin:', adminCheck)
+          
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out')
         }
