@@ -35,7 +35,8 @@ import Settings from './pages/Settings';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
 import SupabaseDemo from './pages/SupabaseDemo';
-import AuthCallback from './pages/AuthCallback';
+// Temporarily comment out AuthCallback to fix build
+// import AuthCallback from './pages/AuthCallback';
 
 // Import layout and utility components
 import Layout from './components/Layout';
