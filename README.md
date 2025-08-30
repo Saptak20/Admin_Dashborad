@@ -245,3 +245,12 @@ Custom UI component library included:
 ---
 
 **Note**: This is a development/demo implementation using mock data. For production use, integrate with real backend services (Firebase, Supabase, etc.) and replace mock adapters with real service implementations.
+
+## 🔐 Environment Variables
+
+Create a `.env` file at the project root or configure these in your hosting provider:
+
+- `VITE_SUPABASE_URL` — Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` — Supabase anon (public) API key
+
+Do not use the Supabase Service Role key in the browser. On Netlify, go to Site settings → Build & deploy → Environment and add these variables. Then trigger “Clear cache and deploy site”.
