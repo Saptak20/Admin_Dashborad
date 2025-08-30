@@ -56,6 +56,7 @@ import {
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
+import { AdminDebug } from './components/AdminDebug';
 
 // Simple router - in a real app, you'd use React Router
 type PageName = 'dashboard' | 'drivers' | 'buses' | 'routes' | 'trips' | 'revenue' | 'sos' | 'leaderboard' | 'settings';
@@ -73,6 +74,29 @@ const App: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | undefined>();
   const { theme, toggleTheme } = useTheme();
+
+  /**
+   * Handle Sign Out
+   * 
+   * Safely handles user sign out with error handling and user feedback.
+   */
+  const handleSignOut = async () => {
+    try {
+      console.log('Attempting to sign out...')
+      const { error } = await signOut();
+      if (error) {
+        console.error('Sign out error:', error);
+        alert('Error signing out: ' + error.message);
+      } else {
+        console.log('Successfully signed out - should redirect to login');
+        // Force reload to ensure clean state
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error('Unexpected sign out error:', err);
+      alert('Unexpected error during sign out');
+    }
+  };
 
   /**
    * Search Navigation Handler
@@ -231,9 +255,11 @@ const App: React.FC = () => {
                     }`}>Signed in</p>
                   </div>
                   <button
-                    onClick={() => signOut()}
-                    className={`ml-2 px-3 py-2 rounded-lg text-xs ${
-                      theme === 'dark' ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'
+                    onClick={handleSignOut}
+                    className={`ml-2 px-3 py-2 rounded-lg text-xs transition-colors hover:scale-105 ${
+                      theme === 'dark' 
+                        ? 'bg-red-600 text-white hover:bg-red-500' 
+                        : 'bg-red-500 text-white hover:bg-red-600'
                     }`}
                   >
                     Sign out
@@ -302,6 +328,11 @@ const App: React.FC = () => {
         {/* Main Content with Enhanced Layout */}
         <main className="flex-1 relative">
           <div className="p-8">
+            {/* Temporary Debug Panel - Remove after testing */}
+            <div className="mb-4">
+              <AdminDebug />
+            </div>
+            
             <div className="max-w-full mx-auto">
               <div className="transform transition-all duration-500 hover:scale-[1.005]">
                 {renderPage()}
