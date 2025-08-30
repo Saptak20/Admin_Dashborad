@@ -1,14 +1,23 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { FcGoogle } from 'react-icons/fc'
 import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
 
 const Login: React.FC = () => {
   const { theme } = useTheme()
-  const { signInWithGoogle, loading } = useAuth()
+  const { signInWithGoogle, signInWithEmail, loading } = useAuth()
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
 
   const onGoogle = async () => {
     await signInWithGoogle()
+  }
+
+  const onEmail = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) return
+    const { error } = await signInWithEmail(email)
+    if (!error) setSent(true)
   }
 
   return (
@@ -39,6 +48,38 @@ const Login: React.FC = () => {
             <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
               Sign in to continue
             </p>
+          </div>
+        </div>
+
+        <form onSubmit={onEmail} className="space-y-3 mb-6">
+          <label className={`block text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Work email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+            className={`w-full px-4 py-3 rounded-xl outline-none border ${
+              theme === 'dark' ? 'bg-gray-800/70 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
+            }`}
+            required
+          />
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-3 rounded-xl transition-all duration-300 hover:scale-[1.01] ${
+              theme === 'dark' ? 'bg-indigo-600 text-white hover:bg-indigo-500' : 'bg-indigo-600 text-white hover:bg-indigo-500'
+            }`}
+          >
+            {sent ? 'Magic link sent ✓' : loading ? 'Sending…' : 'Email me a magic link'}
+          </button>
+        </form>
+
+        <div className={`relative my-4`}>
+          <div className={`absolute inset-0 flex items-center`}>
+            <div className={`${theme === 'dark' ? 'border-gray-700' : 'border-gray-200'} w-full border-t`}></div>
+          </div>
+          <div className={`relative flex justify-center text-xs`}>
+            <span className={`${theme === 'dark' ? 'bg-gray-900/50 text-gray-400' : 'bg-white/70 text-gray-500'} px-2`}>or</span>
           </div>
         </div>
 
