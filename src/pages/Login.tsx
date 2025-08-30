@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { FcGoogle } from 'react-icons/fc'
 import { useTheme } from '../contexts/ThemeContext'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../contexts/AuthContext-safe'
 
 const Login: React.FC = () => {
   const { theme } = useTheme()
   const navigate = useNavigate()
-  const { signInWithGoogle, signInWithEmail, loading, isAuthenticated, user } = useAuth()
+  const { signInWithGoogle, signInWithEmail, loading, isAuthenticated, user, supabaseAvailable } = useAuth()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
 
