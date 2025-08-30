@@ -1,13 +1,94 @@
--- NextStop Transport Management System Database Schema
--- Execute this SQL in your Supabase SQL Editor
+-- NextStop Transport Management System - Full Reset and Schema
+-- Run this in Supabase SQL Editor. This script will:
+-- 1) Drop existing policies, triggers, tables, and types (idempotent/safe-ish)
+-- 2) Recreate extensions, types, tables, constraints, indexes
+-- 3) Enable RLS and set policies: authenticated can read; only admins can write
+-- 4) Add admin_emails allowlist and helper functions for auth email and admin checks
 
--- Enable UUID extension
+-- =============================
+-- Extensions
+-- =============================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Enable PostGIS for location data (if not already enabled)
 CREATE EXTENSION IF NOT EXISTS postgis;
 
--- Create custom types
+-- =============================
+-- Drop existing policies (so objects can be dropped)
+-- =============================
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT schemaname, tablename, policyname
+    FROM pg_policies
+    WHERE schemaname = 'public'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', r.policyname, r.schemaname, r.tablename);
+  END LOOP;
+END $$;
+
+-- =============================
+-- Drop triggers and functions
+-- =============================
+DO $$
+DECLARE r RECORD;
+BEGIN
+  -- Drop triggers that update updated_at
+  FOR r IN (
+    SELECT event_object_schema AS schemaname,
+           event_object_table AS tablename,
+           trigger_name
+    FROM information_schema.triggers
+    WHERE event_object_schema = 'public'
+  ) LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', r.trigger_name, r.schemaname, r.tablename);
+  END LOOP;
+
+  -- Drop helper functions
+  PERFORM 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'update_updated_at_column';
+  IF FOUND THEN EXECUTE 'DROP FUNCTION public.update_updated_at_column()'; END IF;
+
+  PERFORM 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'auth_email';
+  IF FOUND THEN EXECUTE 'DROP FUNCTION public.auth_email()'; END IF;
+
+  PERFORM 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'is_admin';
+  IF FOUND THEN EXECUTE 'DROP FUNCTION public.is_admin()'; END IF;
+END $$;
+
+-- =============================
+-- Drop tables
+-- =============================
+DROP TABLE IF EXISTS public.payments CASCADE;
+DROP TABLE IF EXISTS public.trips CASCADE;
+DROP TABLE IF EXISTS public.sos_events CASCADE;
+DROP TABLE IF EXISTS public.buses CASCADE;
+DROP TABLE IF EXISTS public.routes CASCADE;
+DROP TABLE IF EXISTS public.drivers CASCADE;
+DROP TABLE IF EXISTS public.admin_settings CASCADE;
+DROP TABLE IF EXISTS public.admin_emails CASCADE;
+
+-- =============================
+-- Drop types
+-- =============================
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'driver_status') THEN DROP TYPE driver_status; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'vehicle_type') THEN DROP TYPE vehicle_type; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_method') THEN DROP TYPE payment_method; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_status') THEN DROP TYPE payment_status; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sos_type') THEN DROP TYPE sos_type; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sos_status') THEN DROP TYPE sos_status; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'priority_level') THEN DROP TYPE priority_level; END IF;
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'setting_category') THEN DROP TYPE setting_category; END IF;
+END $$;
+
+-- =============================
+-- Recreate types
+-- =============================
 CREATE TYPE driver_status AS ENUM ('pending', 'approved', 'inactive');
 CREATE TYPE vehicle_type AS ENUM ('bus', 'miniBus', 'auto', 'other');
 CREATE TYPE payment_method AS ENUM ('cash', 'card', 'upi', 'wallet');
@@ -17,7 +98,9 @@ CREATE TYPE sos_status AS ENUM ('active', 'resolved', 'dismissed');
 CREATE TYPE priority_level AS ENUM ('low', 'medium', 'high', 'critical');
 CREATE TYPE setting_category AS ENUM ('general', 'notifications', 'payments', 'security', 'analytics');
 
--- Drivers table
+-- =============================
+-- Tables
+-- =============================
 CREATE TABLE drivers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   full_name VARCHAR(100) NOT NULL,
@@ -34,7 +117,6 @@ CREATE TABLE drivers (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Buses table
 CREATE TABLE buses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   bus_number VARCHAR(20) NOT NULL UNIQUE,
@@ -48,7 +130,6 @@ CREATE TABLE buses (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Routes table
 CREATE TABLE routes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(100) NOT NULL,
@@ -63,7 +144,6 @@ CREATE TABLE routes (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Trips table
 CREATE TABLE trips (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   passenger_id UUID,
@@ -89,7 +169,6 @@ CREATE TABLE trips (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Payments table
 CREATE TABLE payments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trip_id UUID NOT NULL,
@@ -102,7 +181,6 @@ CREATE TABLE payments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- SOS Events table
 CREATE TABLE sos_events (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   driver_id UUID NOT NULL,
@@ -119,7 +197,6 @@ CREATE TABLE sos_events (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Admin Settings table
 CREATE TABLE admin_settings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   setting_key VARCHAR(100) NOT NULL UNIQUE,
@@ -131,54 +208,35 @@ CREATE TABLE admin_settings (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Admin allowlist for dashboard access by email
-CREATE TABLE IF NOT EXISTS admin_emails (
+-- Admin allowlist
+CREATE TABLE admin_emails (
   email TEXT PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Helper to fetch the email from the JWT
-CREATE OR REPLACE FUNCTION auth_email()
-RETURNS TEXT
-LANGUAGE sql STABLE AS $$
-  SELECT (auth.jwt() ->> 'email')::text;
-$$;
-
--- Helper to check if current user is an admin (by email)
-CREATE OR REPLACE FUNCTION is_admin()
-RETURNS BOOLEAN
-LANGUAGE sql STABLE AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.admin_emails ae WHERE ae.email = auth_email()
-  );
-$$;
-
--- Add foreign key constraints
+-- =============================
+-- Foreign Keys
+-- =============================
 ALTER TABLE buses ADD CONSTRAINT fk_buses_driver 
   FOREIGN KEY (assigned_driver_id) REFERENCES drivers(id) ON DELETE SET NULL;
-
 ALTER TABLE drivers ADD CONSTRAINT fk_drivers_bus 
   FOREIGN KEY (assigned_bus_id) REFERENCES buses(id) ON DELETE SET NULL;
-
 ALTER TABLE trips ADD CONSTRAINT fk_trips_driver 
   FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE;
-
 ALTER TABLE trips ADD CONSTRAINT fk_trips_bus 
   FOREIGN KEY (bus_id) REFERENCES buses(id) ON DELETE CASCADE;
-
 ALTER TABLE trips ADD CONSTRAINT fk_trips_route 
   FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE;
-
 ALTER TABLE payments ADD CONSTRAINT fk_payments_trip 
   FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE;
-
 ALTER TABLE sos_events ADD CONSTRAINT fk_sos_driver 
   FOREIGN KEY (driver_id) REFERENCES drivers(id) ON DELETE CASCADE;
-
 ALTER TABLE sos_events ADD CONSTRAINT fk_sos_bus 
   FOREIGN KEY (bus_id) REFERENCES buses(id) ON DELETE SET NULL;
 
--- Create indexes for better performance
+-- =============================
+-- Indexes
+-- =============================
 CREATE INDEX idx_drivers_status ON drivers(status);
 CREATE INDEX idx_drivers_phone ON drivers(phone);
 CREATE INDEX idx_drivers_email ON drivers(email);
@@ -196,7 +254,9 @@ CREATE INDEX idx_sos_status ON sos_events(status);
 CREATE INDEX idx_sos_priority ON sos_events(priority);
 CREATE INDEX idx_sos_driver ON sos_events(driver_id);
 
--- Enable Row Level Security (RLS)
+-- =============================
+-- RLS
+-- =============================
 ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE routes ENABLE ROW LEVEL SECURITY;
@@ -205,110 +265,80 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sos_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
 
--- Policies: authenticated can read; only admins can write
--- Drop existing permissive policies if they already exist (safe re-run)
-DO $$ BEGIN
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read drivers';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read drivers" ON drivers'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert drivers';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert drivers" ON drivers'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update drivers';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update drivers" ON drivers'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read buses';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read buses" ON buses'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert buses';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert buses" ON buses'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update buses';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update buses" ON buses'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read routes';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read routes" ON routes'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert routes';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert routes" ON routes'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update routes';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update routes" ON routes'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read trips';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read trips" ON trips'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert trips';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert trips" ON trips'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update trips';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update trips" ON trips'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read payments';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read payments" ON payments'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert payments';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert payments" ON payments'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update payments';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update payments" ON payments'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read sos_events';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read sos_events" ON sos_events'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert sos_events';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert sos_events" ON sos_events'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update sos_events';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update sos_events" ON sos_events'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read admin_settings';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read admin_settings" ON admin_settings'; END IF;
-  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update admin_settings';
-  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update admin_settings" ON admin_settings'; END IF;
-END $$;
+-- =============================
+-- Helpers
+-- =============================
+CREATE OR REPLACE FUNCTION auth_email()
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+  SELECT (auth.jwt() ->> 'email')::text;
+$$;
 
--- Read access to all authenticated users
-CREATE POLICY "read_all_authenticated_drivers" ON drivers
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.admin_emails ae WHERE ae.email = auth_email()
+  );
+$$;
+
+-- =============================
+-- Policies
+-- =============================
+-- Read for all authenticated users
+CREATE POLICY read_all_authenticated_drivers ON drivers
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_buses" ON buses
+CREATE POLICY read_all_authenticated_buses ON buses
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_routes" ON routes
+CREATE POLICY read_all_authenticated_routes ON routes
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_trips" ON trips
+CREATE POLICY read_all_authenticated_trips ON trips
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_payments" ON payments
+CREATE POLICY read_all_authenticated_payments ON payments
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_sos_events" ON sos_events
+CREATE POLICY read_all_authenticated_sos_events ON sos_events
   FOR SELECT TO authenticated USING (true);
-CREATE POLICY "read_all_authenticated_admin_settings" ON admin_settings
+CREATE POLICY read_all_authenticated_admin_settings ON admin_settings
   FOR SELECT TO authenticated USING (true);
 
--- Write access restricted to admins
-CREATE POLICY "admin_write_drivers" ON drivers
+-- Write only for admins
+CREATE POLICY admin_write_drivers ON drivers
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_buses" ON buses
+CREATE POLICY admin_write_buses ON buses
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_routes" ON routes
+CREATE POLICY admin_write_routes ON routes
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_trips" ON trips
+CREATE POLICY admin_write_trips ON trips
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_payments" ON payments
+CREATE POLICY admin_write_payments ON payments
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_sos_events" ON sos_events
+CREATE POLICY admin_write_sos_events ON sos_events
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
-CREATE POLICY "admin_write_admin_settings" ON admin_settings
+CREATE POLICY admin_write_admin_settings ON admin_settings
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
--- Create functions for updating timestamps
+-- =============================
+-- Updated_at trigger
+-- =============================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
--- Create triggers for auto-updating timestamps
 CREATE TRIGGER update_drivers_updated_at BEFORE UPDATE ON drivers
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_buses_updated_at BEFORE UPDATE ON buses
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_routes_updated_at BEFORE UPDATE ON routes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_trips_updated_at BEFORE UPDATE ON trips
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_payments_updated_at BEFORE UPDATE ON payments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_sos_events_updated_at BEFORE UPDATE ON sos_events
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_admin_settings_updated_at BEFORE UPDATE ON admin_settings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
