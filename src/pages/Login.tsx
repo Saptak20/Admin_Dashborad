@@ -1,22 +1,47 @@
-import React, { useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { FcGoogle } from 'react-icons/fc'
 import { useTheme } from '../contexts/ThemeContext'
 import { useAuth } from '../contexts/AuthContext'
 
 const Login: React.FC = () => {
   const { theme } = useTheme()
-  const { signInWithGoogle, signInWithEmail, loading, isAuthenticated } = useAuth()
+  const navigate = useNavigate()
+  const { signInWithGoogle, signInWithEmail, loading, isAuthenticated, user } = useAuth()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
 
-  // Redirect to dashboard if already authenticated
-  if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />
-  }
+  // Handle authentication state changes
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('User is authenticated, redirecting to dashboard')
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, user, navigate])
+
+  // Also check URL parameters for session (OAuth callback)
+  useEffect(() => {
+    const handleOAuthCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const accessToken = urlParams.get('access_token')
+      const refreshToken = urlParams.get('refresh_token')
+      
+      if (accessToken || refreshToken) {
+        console.log('OAuth callback detected, waiting for session...')
+        // Clear the URL parameters
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    }
+
+    handleOAuthCallback()
+  }, [])
 
   const onGoogle = async () => {
-    await signInWithGoogle()
+    console.log('Starting Google sign in...')
+    const { error } = await signInWithGoogle()
+    if (error) {
+      console.error('Google sign in error:', error)
+    }
   }
 
   const onEmail = async (e: React.FormEvent) => {
@@ -24,6 +49,20 @@ const Login: React.FC = () => {
     if (!email) return
     const { error } = await signInWithEmail(email)
     if (!error) setSent(true)
+  }
+
+  // Show loading while checking authentication state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return (
