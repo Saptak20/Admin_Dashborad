@@ -33,12 +33,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let mounted = true
+
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (mounted) {
+          if (error) {
+            console.error('Error getting session:', error)
+          }
+          setSession(session)
+          setUser(session?.user ?? null)
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Session error:', error)
+        if (mounted) {
+          setLoading(false)
+        }
+      }
     }
 
     getInitialSession()
@@ -47,24 +61,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state changed:', event, session?.user?.email)
-        setSession(session)
-        setUser(session?.user ?? null)
-        setLoading(false)
         
-        // You can add additional logic here based on auth events
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+          setLoading(false)
+        }
+        
+        // Handle different auth events
         if (event === 'SIGNED_IN') {
           console.log('User signed in:', session?.user?.email)
-          // Force a redirect after successful sign in
-          if (window.location.pathname === '/login') {
-            window.location.href = '/dashboard'
-          }
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out')
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed')
         }
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signInWithGoogle = async () => {
@@ -73,10 +91,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/dashboard`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
         },
       })
       return { error }
