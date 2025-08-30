@@ -38,7 +38,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        console.log('Getting initial session...')
         const { data: { session }, error } = await supabase.auth.getSession()
+        console.log('Initial session:', session?.user?.email || 'No session')
+        
         if (mounted) {
           if (error) {
             console.error('Error getting session:', error)
@@ -60,7 +63,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
+        console.log('Auth state changed:', event, session?.user?.email || 'No user')
         
         if (mounted) {
           setSession(session)
@@ -70,9 +73,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         // Handle different auth events
         if (event === 'SIGNED_IN') {
-          console.log('User signed in:', session?.user?.email)
+          console.log('User signed in successfully:', session?.user?.email)
+          // Store session in localStorage as backup
+          if (session) {
+            localStorage.setItem('supabase.auth.token', JSON.stringify(session))
+          }
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out')
+          localStorage.removeItem('supabase.auth.token')
         } else if (event === 'TOKEN_REFRESHED') {
           console.log('Token refreshed')
         }
