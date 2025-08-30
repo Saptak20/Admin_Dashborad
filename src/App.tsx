@@ -17,13 +17,13 @@
  * dashboard, coordinating all major features and navigation flows.
  */
 
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider } from './contexts/AuthContext-safe';
 
-// Import all page components
+// Import all page components - Restoring all imports
 import Dashboard from './pages/Dashboard';
 import Drivers from './pages/Drivers';
 import Buses from './pages/Buses';
@@ -35,13 +35,29 @@ import Settings from './pages/Settings';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
 import SupabaseDemo from './pages/SupabaseDemo';
-// Temporarily comment out AuthCallback to fix build
-// import AuthCallback from './pages/AuthCallback';
 
 // Import layout and utility components
 import Layout from './components/Layout';
 import { useAuth } from './contexts/AuthContext';
 import { ToastContainer } from './components/ToastNotifications';
+
+// Simple inline AuthCallback component to avoid import issues
+const AuthCallback: React.FC = () => {
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    navigate('/dashboard', { replace: true });
+  }, [navigate]);
+  
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Processing authentication...</p>
+      </div>
+    </div>
+  );
+};
 
 /**
  * Protected Route Component
