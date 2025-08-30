@@ -49,6 +49,7 @@ const Toast: React.FC<ToastProps> = ({ id, type, title, message, timestamp, onCl
 
   return (
     <div
+      data-toast-id={id}
       className={`
         transform transition-all duration-300 ease-in-out border-l-4 ${getBorderColor()}
         ${isVisible && !isRemoving ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
