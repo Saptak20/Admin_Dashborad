@@ -35,6 +35,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     let mounted = true
 
+    // Check if supabase is available
+    if (!supabase) {
+      console.error('Supabase client not initialized - missing environment variables')
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     const getInitialSession = async () => {
       try {
