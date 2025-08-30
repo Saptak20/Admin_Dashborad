@@ -56,7 +56,6 @@ import {
 import { useTheme } from './contexts/ThemeContext';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
-import { AdminDebug } from './components/AdminDebug';
 
 // Simple router - in a real app, you'd use React Router
 type PageName = 'dashboard' | 'drivers' | 'buses' | 'routes' | 'trips' | 'revenue' | 'sos' | 'leaderboard' | 'settings';
@@ -328,11 +327,6 @@ const App: React.FC = () => {
         {/* Main Content with Enhanced Layout */}
         <main className="flex-1 relative">
           <div className="p-8">
-            {/* Temporary Debug Panel - Remove after testing */}
-            <div className="mb-4">
-              <AdminDebug />
-            </div>
-            
             <div className="max-w-full mx-auto">
               <div className="transform transition-all duration-500 hover:scale-[1.005]">
                 {renderPage()}
