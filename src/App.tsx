@@ -21,6 +21,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { AuthProvider } from './contexts/AuthContext';
 
 // Import all page components
 import Dashboard from './pages/Dashboard';
@@ -34,9 +35,10 @@ import Settings from './pages/Settings';
 import Leaderboard from './pages/Leaderboard';
 import Login from './pages/Login';
 import SupabaseDemo from './pages/SupabaseDemo';
+import AuthCallback from './pages/AuthCallback';
 
 // Import layout and utility components
-import { Layout } from './components/Layout';
+import Layout from './components/Layout';
 import { useAuth } from './contexts/AuthContext';
 import { ToastContainer } from './components/ToastNotifications';
 
@@ -46,18 +48,21 @@ import { ToastContainer } from './components/ToastNotifications';
  * Wraps routes that require authentication, redirecting to login if needed.
  */
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   
   // Show loading while authentication state is being determined
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
       </div>
     );
   }
   
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
   
@@ -73,47 +78,50 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
  */
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <NotificationProvider>
-        <Router>
-          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<Login />} />
+    <AuthProvider>
+      <ThemeProvider>
+        <NotificationProvider>
+          <Router>
+            <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<Login />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                
+                {/* Root redirect */}
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                
+                {/* Protected Routes */}
+                <Route path="/*" element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Routes>
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/drivers" element={<Drivers />} />
+                        <Route path="/buses" element={<Buses />} />
+                        <Route path="/routes" element={<RoutesPage />} />
+                        <Route path="/trips" element={<Trips />} />
+                        <Route path="/revenue" element={<Revenue />} />
+                        <Route path="/sos" element={<SOS />} />
+                        <Route path="/leaderboard" element={<Leaderboard />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/supabase-demo" element={<SupabaseDemo />} />
+                        
+                        {/* Redirect any unknown routes to dashboard */}
+                        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                      </Routes>
+                    </Layout>
+                  </ProtectedRoute>
+                } />
+              </Routes>
               
-              {/* Root redirect */}
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              
-              {/* Protected Routes */}
-              <Route path="/*" element={
-                <ProtectedRoute>
-                  <Layout>
-                    <Routes>
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/drivers" element={<Drivers />} />
-                      <Route path="/buses" element={<Buses />} />
-                      <Route path="/routes" element={<RoutesPage />} />
-                      <Route path="/trips" element={<Trips />} />
-                      <Route path="/revenue" element={<Revenue />} />
-                      <Route path="/sos" element={<SOS />} />
-                      <Route path="/leaderboard" element={<Leaderboard />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/supabase-demo" element={<SupabaseDemo />} />
-                      
-                      {/* Redirect any unknown routes to dashboard */}
-                      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                    </Routes>
-                  </Layout>
-                </ProtectedRoute>
-              } />
-            </Routes>
-            
-            {/* Global notification system */}
-            <ToastContainer />
-          </div>
-        </Router>
-      </NotificationProvider>
-    </ThemeProvider>
+              {/* Global notification system */}
+              <ToastContainer />
+            </div>
+          </Router>
+        </NotificationProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 };
 
