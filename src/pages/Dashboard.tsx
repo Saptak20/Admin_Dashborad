@@ -24,7 +24,6 @@ import { KPICards } from '../components/KPICards';
 import { MapView } from '../components/MapView';
 import { PeakHoursChart } from '../components/PeakHoursChart';
 import { PeakRoutesChart } from '../components/PeakRoutesChart';
-import { AdminDebug } from '../components/AdminDebug';
 import { useTheme } from '../contexts/ThemeContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { 
