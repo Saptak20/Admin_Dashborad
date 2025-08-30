@@ -131,6 +131,28 @@ CREATE TABLE admin_settings (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Admin allowlist for dashboard access by email
+CREATE TABLE IF NOT EXISTS admin_emails (
+  email TEXT PRIMARY KEY,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Helper to fetch the email from the JWT
+CREATE OR REPLACE FUNCTION auth_email()
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+  SELECT (auth.jwt() ->> 'email')::text;
+$$;
+
+-- Helper to check if current user is an admin (by email)
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql STABLE AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.admin_emails ae WHERE ae.email = auth_email()
+  );
+$$;
+
 -- Add foreign key constraints
 ALTER TABLE buses ADD CONSTRAINT fk_buses_driver 
   FOREIGN KEY (assigned_driver_id) REFERENCES drivers(id) ON DELETE SET NULL;
@@ -183,66 +205,82 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sos_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_settings ENABLE ROW LEVEL SECURITY;
 
--- Create policies for authenticated users (you can customize these based on your needs)
-CREATE POLICY "Allow authenticated users to read drivers" ON drivers
+-- Policies: authenticated can read; only admins can write
+-- Drop existing permissive policies if they already exist (safe re-run)
+DO $$ BEGIN
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read drivers';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read drivers" ON drivers'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert drivers';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert drivers" ON drivers'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update drivers';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update drivers" ON drivers'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read buses';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read buses" ON buses'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert buses';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert buses" ON buses'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update buses';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update buses" ON buses'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read routes';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read routes" ON routes'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert routes';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert routes" ON routes'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update routes';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update routes" ON routes'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read trips';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read trips" ON trips'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert trips';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert trips" ON trips'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update trips';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update trips" ON trips'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read payments';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read payments" ON payments'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert payments';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert payments" ON payments'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update payments';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update payments" ON payments'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read sos_events';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read sos_events" ON sos_events'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to insert sos_events';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to insert sos_events" ON sos_events'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update sos_events';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update sos_events" ON sos_events'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to read admin_settings';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to read admin_settings" ON admin_settings'; END IF;
+  PERFORM 1 FROM pg_policies WHERE polname = 'Allow authenticated users to update admin_settings';
+  IF FOUND THEN EXECUTE 'DROP POLICY "Allow authenticated users to update admin_settings" ON admin_settings'; END IF;
+END $$;
+
+-- Read access to all authenticated users
+CREATE POLICY "read_all_authenticated_drivers" ON drivers
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_buses" ON buses
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_routes" ON routes
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_trips" ON trips
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_payments" ON payments
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_sos_events" ON sos_events
+  FOR SELECT TO authenticated USING (true);
+CREATE POLICY "read_all_authenticated_admin_settings" ON admin_settings
   FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "Allow authenticated users to insert drivers" ON drivers
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update drivers" ON drivers
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read buses" ON buses
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to insert buses" ON buses
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update buses" ON buses
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read routes" ON routes
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to insert routes" ON routes
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update routes" ON routes
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read trips" ON trips
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to insert trips" ON trips
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update trips" ON trips
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read payments" ON payments
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to insert payments" ON payments
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update payments" ON payments
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read sos_events" ON sos_events
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to insert sos_events" ON sos_events
-  FOR INSERT TO authenticated WITH CHECK (true);
-
-CREATE POLICY "Allow authenticated users to update sos_events" ON sos_events
-  FOR UPDATE TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to read admin_settings" ON admin_settings
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Allow authenticated users to update admin_settings" ON admin_settings
-  FOR UPDATE TO authenticated USING (true);
+-- Write access restricted to admins
+CREATE POLICY "admin_write_drivers" ON drivers
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_buses" ON buses
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_routes" ON routes
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_trips" ON trips
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_payments" ON payments
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_sos_events" ON sos_events
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+CREATE POLICY "admin_write_admin_settings" ON admin_settings
+  FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
 -- Create functions for updating timestamps
 CREATE OR REPLACE FUNCTION update_updated_at_column()
