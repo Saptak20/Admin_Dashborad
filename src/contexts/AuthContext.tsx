@@ -1,22 +1,164 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { User, Session, AuthError } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabase'
 
-const AuthCallback: React.FC = () => {
-  const navigate = useNavigate();
+interface AuthContextType {
+  user: User | null
+  session: Session | null
+  loading: boolean
+  isAuthenticated: boolean
+  signInWithGoogle: () => Promise<{ error: AuthError | null }>
+  signInWithEmail: (email: string) => Promise<{ error: AuthError | null }>
+  signOut: () => Promise<{ error: AuthError | null }>
+  logout: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
+}
+
+interface AuthProviderProps {
+  children: React.ReactNode
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Simple redirect to dashboard after OAuth callback
-    navigate('/dashboard', { replace: true });
-  }, [navigate]);
+    let mounted = true
+
+    // Get initial session
+    const getInitialSession = async () => {
+      try {
+        console.log('Getting initial session...')
+        const { data: { session }, error } = await supabase.auth.getSession()
+        console.log('Initial session:', session?.user?.email || 'No session')
+        
+        if (mounted) {
+          if (error) {
+            console.error('Error getting session:', error)
+          }
+          setSession(session)
+          setUser(session?.user ?? null)
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Session error:', error)
+        if (mounted) {
+          setLoading(false)
+        }
+      }
+    }
+
+    getInitialSession()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email || 'No user')
+        
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+          setLoading(false)
+        }
+        
+        // Handle different auth events
+        if (event === 'SIGNED_IN') {
+          console.log('User signed in successfully:', session?.user?.email)
+          // Store session in localStorage as backup
+          if (session) {
+            localStorage.setItem('supabase.auth.token', JSON.stringify(session))
+          }
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out')
+          localStorage.removeItem('supabase.auth.token')
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed')
+        }
+      }
+    )
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const signInWithGoogle = async () => {
+    try {
+      console.log('Starting Google OAuth...')
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      })
+      
+      if (error) {
+        console.error('Google OAuth error:', error)
+      }
+      
+      return { error }
+    } catch (error) {
+      console.error('Google OAuth exception:', error)
+      return { error: error as AuthError }
+    }
+  }
+
+  const signInWithEmail = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/dashboard`,
+        },
+      })
+      return { error }
+    } catch (error) {
+      return { error: error as AuthError }
+    }
+  }
+
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut()
+      return { error }
+    } catch (error) {
+      return { error: error as AuthError }
+    }
+  }
+
+  const logout = async () => {
+    await signOut();
+  }
+
+  const value: AuthContextType = {
+    user,
+    session,
+    loading,
+    isAuthenticated: !!user,
+    signInWithGoogle,
+    signInWithEmail,
+    signOut,
+    logout,
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Processing authentication...</p>
-      </div>
-    </div>
-  );
-};
-
-export default AuthCallback;
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
