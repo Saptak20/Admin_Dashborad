@@ -5,8 +5,7 @@
 
 [build.environment]
   NODE_VERSION = "18"
-
-# Enable SPA fallback
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
