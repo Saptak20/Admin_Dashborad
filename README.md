@@ -244,8 +244,6 @@ Custom UI component library included:
 
 ---
 
-**Note**: This is a development/demo implementation using mock data. For production use, integrate with real backend services (Firebase, Supabase, etc.) and replace mock adapters with real service implementations.
-
 ## 🔐 Environment Variables
 
 Create a `.env` file at the project root or configure these in your hosting provider:
