@@ -253,4 +253,4 @@ Create a `.env` file at the project root or configure these in your hosting prov
 - `VITE_SUPABASE_URL` — Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` — Supabase anon (public) API key
 
-Do not use the Supabase Service Role key in the browser. On Netlify, go to Site settings → Build & deploy → Environment and add these variables. Then trigger “Clear cache and deploy site”.
+
