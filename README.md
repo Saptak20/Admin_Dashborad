@@ -244,11 +244,4 @@ Custom UI component library included:
 
 ---
 
-## 🔐 Environment Variables
-
-Create a `.env` file at the project root or configure these in your hosting provider:
-
-- `VITE_SUPABASE_URL` — Supabase project URL
-- `VITE_SUPABASE_ANON_KEY` — Supabase anon (public) API key
-
 
